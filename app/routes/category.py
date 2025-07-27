@@ -1,49 +1,47 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryResponse
+from typing import List
+from app.schemas.category import CategoryOut, CategoryCreate
 from app.config.db import get_db
 from app.crud.category import category_crud
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
 
 
-@router.post("/post", response_model=CategoryResponse)
-async def create_category(category: CategoryCreate, db: AsyncSession = Depends(get_db)):
-    return await category_crud.create(db, category.dict())
-
-
-@router.get("/getAll", response_model=list[CategoryResponse])
+@router.get("/", response_model=List[CategoryOut])
 async def get_all_categories(db: AsyncSession = Depends(get_db)):
     return await category_crud.get_all(db)
 
 
-@router.get("/getById/id={id}", response_model=CategoryResponse)
-async def get_category_by_id(id: int, db: AsyncSession = Depends(get_db)):
-    category = await category_crud.get_by_id(db, id)
+@router.get("/{category_id}", response_model=CategoryOut)
+async def get_category(category_id: int, db: AsyncSession = Depends(get_db)):
+    category = await category_crud.get_by_id(db, category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     return category
 
 
-@router.get("/name={name}", response_model=CategoryResponse)
-async def get_category_by_name(name: str, db: AsyncSession = Depends(get_db)):
-    category = await category_crud.get_by_field(db, "name", name)
-    if not category:
+@router.post("/", response_model=CategoryOut)
+async def create_category(category_in: CategoryCreate, db: AsyncSession = Depends(get_db)):
+    # Optionally add check for duplicate category name here
+    existing = await category_crud.get_by_field(db, "name", category_in.name)
+    if existing:
+        raise HTTPException(
+            status_code=400, detail="Category name already exists")
+    return await category_crud.create(db, category_in.dict())
+
+
+@router.put("/{category_id}", response_model=CategoryOut)
+async def update_category(category_id: int, category_in: CategoryCreate, db: AsyncSession = Depends(get_db)):
+    updated = await category_crud.update(db, category_id, category_in.dict())
+    if not updated:
         raise HTTPException(status_code=404, detail="Category not found")
-    return category
+    return updated
 
 
-@router.put("/update/id={id}", response_model=CategoryResponse)
-async def update_category(id: int, update_data: CategoryUpdate, db: AsyncSession = Depends(get_db)):
-    category = await category_crud.update(db, id, update_data.dict())
-    if not category:
+@router.delete("/{category_id}")
+async def delete_category(category_id: int, db: AsyncSession = Depends(get_db)):
+    deleted = await category_crud.delete(db, category_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Category not found")
-    return category
-
-
-@router.delete("/delete/id={id}")
-async def delete_category(id: int, db: AsyncSession = Depends(get_db)):
-    success = await category_crud.delete(db, id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Category not found")
-    return {"message": "Category deleted successfully"}
+    return {"detail": "Category deleted successfully"}

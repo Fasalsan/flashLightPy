@@ -1,36 +1,16 @@
-import os
-import shutil
-from typing import List, Optional
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config.db import get_db
 from app.crud.product import product_crud
-from app.crud.category import category_crud
 from app.schemas.product import ProductOut
+import os
+import shutil
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = "uploads/images"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
-@router.get("/", response_model=List[ProductOut])
-async def get_products(db: AsyncSession = Depends(get_db)):
-    return await product_crud.get_all(db)
-
-
-@router.get("/{id}", response_model=ProductOut)
-async def get_product(id: int, db: AsyncSession = Depends(get_db)):
-    product = await product_crud.get_by_id(db, id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    return product
-
-
-@router.get("/by-category/{category_id}", response_model=List[ProductOut])
-async def get_products_by_category(category_id: int, db: AsyncSession = Depends(get_db)):
-    return await product_crud.get_by_field_many(db, "category_id", category_id)
 
 
 @router.post("/", response_model=ProductOut)
@@ -39,80 +19,83 @@ async def create_product(
     price: int = Form(...),
     category_id: int = Form(...),
     image: UploadFile = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    category = await category_crud.get_by_id(db, category_id)
-    if not category:
-        raise HTTPException(status_code=400, detail="Invalid category_id")
-
-    image_path = None
+    image_filename = None
     if image:
-        if not image.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="Invalid image type")
-        image_path = os.path.join(
-            UPLOAD_DIR, image.filename).replace("\\", "/")
-        with open(image_path, "wb") as buffer:
+        image_filename = image.filename
+        file_path = os.path.join(UPLOAD_DIR, image_filename)
+        with open(file_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
 
     product_data = {
         "name": name,
         "price": price,
         "category_id": category_id,
-        "image": image_path
+        "image": image_filename,
     }
 
-    return await product_crud.create(db, product_data)
+    product = await product_crud.create(db, product_data)
+    return product
 
 
-@router.put("/{id}", response_model=ProductOut)
+@router.get("/", response_model=list[ProductOut])
+async def list_products(db: AsyncSession = Depends(get_db)):
+    return await product_crud.get_all(db)
+
+
+@router.get("/{product_id}", response_model=ProductOut)
+async def get_product(product_id: int, db: AsyncSession = Depends(get_db)):
+    product = await product_crud.get_by_id(db, product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return product
+
+
+@router.get("/by-name/{name}", response_model=ProductOut)
+async def get_product_by_name(name: str, db: AsyncSession = Depends(get_db)):
+    product = await product_crud.get_by_name(db, name)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+@router.put("/{product_id}", response_model=ProductOut)
 async def update_product(
-    id: int,
+    product_id: int,
     name: str = Form(...),
     price: int = Form(...),
     category_id: int = Form(...),
     image: UploadFile = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    product = await product_crud.get_by_id(db, id)
+    product = await product_crud.get_by_id(db, product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(404, "Product not found")
 
-    category = await category_crud.get_by_id(db, category_id)
-    if not category:
-        raise HTTPException(status_code=400, detail="Invalid category_id")
-
-    image_path = product.image
+    image_filename = product.image
     if image:
-        if not image.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="Invalid image type")
-        # Delete old image if exists
-        if product.image and os.path.exists(product.image):
-            os.remove(product.image)
-
-        image_path = os.path.join(
-            UPLOAD_DIR, image.filename).replace("\\", "/")
-        with open(image_path, "wb") as buffer:
+        image_filename = image.filename
+        file_path = os.path.join(UPLOAD_DIR, image_filename)
+        with open(file_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
 
     update_data = {
         "name": name,
         "price": price,
         "category_id": category_id,
-        "image": image_path
+        "image": image_filename,
     }
 
-    return await product_crud.update(db, id, update_data)
+    updated_product = await product_crud.update(db, product_id, update_data)
+    return updated_product
 
 
-@router.delete("/{id}")
-async def delete_product(id: int, db: AsyncSession = Depends(get_db)):
-    product = await product_crud.get_by_id(db, id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+@router.delete("/{product_id}")
+async def delete_product(product_id: int, db: AsyncSession = Depends(get_db)):
+    deleted = await product_crud.delete(db, product_id)
+    if not deleted:
+        raise HTTPException(404, "Product not found")
+    return {"detail": "Product deleted successfully"}
 
-    # Delete image file from disk
-    if product.image and os.path.exists(product.image):
-        os.remove(product.image)
-
-    await product_crud.delete(db, id)
-    return {"message": "Product deleted successfully"}
+# Optional: Add specific function for clarity

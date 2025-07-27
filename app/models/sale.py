@@ -12,5 +12,5 @@ class Sale(Base):
     qty = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    product = relationship("Product")
-    customer = relationship("Customer")
+    product = relationship("Product", backref="sales")
+    customer = relationship("Customer", backref="sales")

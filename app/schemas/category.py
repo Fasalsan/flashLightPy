@@ -6,10 +6,7 @@ class CategoryBase(BaseModel):
 class CategoryCreate(CategoryBase):
     pass
 
-class CategoryUpdate(CategoryBase):
-    pass
-
-class CategoryResponse(CategoryBase):
+class CategoryOut(CategoryBase):
     id: int
 
     class Config:
